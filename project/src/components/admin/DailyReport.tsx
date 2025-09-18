@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { FileText, Send } from 'lucide-react'
@@ -60,7 +61,7 @@ export function DailyReport() {
         // Agrupar produtos vendidos
         const productsMap = new Map()
         salesData.forEach(sale => {
-          sale.sale_items?.forEach((item: { quantity: number; unit_price: number; subtotal: number; products?: { name: string } }) => {
+          sale.sale_items?.forEach((item: { products: { name: string }; quantity: any; subtotal: any }) => {
             const productName = item.products?.name || 'Produto não encontrado'
             if (productsMap.has(productName)) {
               const existing = productsMap.get(productName)
@@ -123,7 +124,7 @@ export function DailyReport() {
     }
 
     // Simular envio para WhatsApp (em produção, use a API do WhatsApp Business)
-    const whatsappUrl = `https://api.whatsapp.com/send?phone=5511932911121&text=${encodeURIComponent(message)}`
+    const whatsappUrl = `https://api.whatsapp.com/send?phone=5511989459295&text=${encodeURIComponent(message)}`
     window.open(whatsappUrl, '_blank')
   }
 
