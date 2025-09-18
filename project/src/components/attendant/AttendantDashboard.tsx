@@ -37,6 +37,10 @@ export function AttendantDashboard() {
   >("cash");
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
+  const [showClientModal, setShowClientModal] = useState(false);
+  const [clientName, setClientName] = useState("");
+  const [pendingProduct, setPendingProduct] = useState(null);
+  const [cashReceived, setCashReceived] = useState<number>(0);
 
   useEffect(() => {
     fetchProducts();
@@ -65,6 +69,22 @@ export function AttendantDashboard() {
       product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       product.category.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const handleProductClick = (product: any) => {
+    if (cart.length === 0 && !clientName) {
+      setPendingProduct(product);
+      setShowClientModal(true);
+    } else {
+      addToCart(product);
+    }
+  };
+
+  const handleConfirmClient = () => {
+    if (!clientName.trim() || !pendingProduct) return;
+    addToCart(pendingProduct);
+    setPendingProduct(null);
+    setShowClientModal(false);
+  };
 
   const addToCart = (product: Product) => {
     const existingItem = cart.find((item) => item.product.id === product.id);
@@ -175,6 +195,57 @@ export function AttendantDashboard() {
       </div>
     );
   }
+  const printCart = () => {
+    if (cart.length === 0) return alert("Carrinho vazio!");
+
+    const cartHtml = `
+    <html>
+      <head>
+        <title>Resumo do Carrinho</title>
+        <style>
+          body { font-family: sans-serif; width: 300px; margin: 20px; }
+          hr { border: 1px solid #ccc; }
+          .item { margin-bottom: 12px; }
+          .item p { margin: 2px 0; }
+          .total { font-weight: bold; margin-top: 10px; }
+        </style>
+      </head>
+      <body>
+        ${clientName ? `<p><strong>Cliente:</strong> ${clientName}</p>` : ""}
+        <hr />
+        ${cart
+          .map(
+            (item) => `
+            <div class="item">
+              <p><strong>${item.product.name}</strong></p>
+              <p>Preço unitário: R$ ${item.product.price.toFixed(2)}</p>
+              <p>Quantidade: ${item.quantity}</p>
+              <p>Subtotal: R$ ${(item.product.price * item.quantity).toFixed(
+                2
+              )}</p>
+            </div>
+          `
+          )
+          .join("")}
+        <hr />
+        <p class="total">Total: R$ ${cart
+          .reduce((sum, item) => sum + item.product.price * item.quantity, 0)
+          .toFixed(2)}</p>
+      </body>
+    </html>
+  `;
+
+    const printWindow = window.open("", "PRINT", "width=400,height=600");
+    if (!printWindow) return;
+
+    printWindow.document.write(cartHtml);
+    printWindow.document.close();
+    printWindow.focus();
+
+    // Dá um pequeno delay antes de fechar para garantir que a impressão termine
+    printWindow.print();
+    setTimeout(() => printWindow.close(), 500);
+  };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-120px)]">
@@ -207,7 +278,7 @@ export function AttendantDashboard() {
               <div
                 key={product.id}
                 className="border border-gray-200 rounded-lg p-4 hover:shadow-lg shadow-md transition-shadow cursor-pointer"
-                onClick={() => addToCart(product)}
+                onClick={() => handleProductClick(product)}
               >
                 <div className="">
                   <div className="flex justify-center">
@@ -255,49 +326,57 @@ export function AttendantDashboard() {
             {cart.length === 0 ? (
               <p className="text-gray-500 text-center py-4">Carrinho vazio</p>
             ) : (
-              cart.map((item) => (
-                <div
-                  key={item.product.id}
-                  className="flex items-center justify-between space-x-3 p-2 border border-gray-200 rounded-lg"
-                >
-                  <div className="flex-1">
-                    <h4 className="text-sm font-medium text-gray-900">
-                      {item.product.name}
-                    </h4>
-                    <p className="text-xs text-gray-600">
-                      R$ {item.product.price.toFixed(2)}
-                    </p>
-                  </div>
+              <>
+                {clientName && (
+                  <p className="text-gray-700 font-medium text-center mb-2">
+                    Cliente: <span className="font-semibold">{clientName}</span>
+                  </p>
+                )}
 
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() =>
-                        updateCartQuantity(item.product.id, item.quantity - 1)
-                      }
-                      className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center hover:bg-gray-300"
-                    >
-                      <Minus className="w-3 h-3" />
-                    </button>
-                    <span className="w-8 text-center text-sm font-medium">
-                      {item.quantity}
-                    </span>
-                    <button
-                      onClick={() =>
-                        updateCartQuantity(item.product.id, item.quantity + 1)
-                      }
-                      className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center hover:bg-gray-300"
-                    >
-                      <Plus className="w-3 h-3" />
-                    </button>
-                    <button
-                      onClick={() => removeFromCart(item.product.id)}
-                      className="w-6 h-6 text-red-600 hover:text-red-800"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
+                {cart.map((item) => (
+                  <div
+                    key={item.product.id}
+                    className="flex items-center justify-between space-x-3 p-2 border border-gray-200 rounded-lg"
+                  >
+                    <div className="flex-1">
+                      <h4 className="text-sm font-medium text-gray-900">
+                        {item.product.name}
+                      </h4>
+                      <p className="text-xs text-gray-600">
+                        R$ {item.product.price.toFixed(2)}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() =>
+                          updateCartQuantity(item.product.id, item.quantity - 1)
+                        }
+                        className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center hover:bg-gray-300"
+                      >
+                        <Minus className="w-3 h-3" />
+                      </button>
+                      <span className="w-8 text-center text-sm font-medium">
+                        {item.quantity}
+                      </span>
+                      <button
+                        onClick={() =>
+                          updateCartQuantity(item.product.id, item.quantity + 1)
+                        }
+                        className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center hover:bg-gray-300"
+                      >
+                        <Plus className="w-3 h-3" />
+                      </button>
+                      <button
+                        onClick={() => removeFromCart(item.product.id)}
+                        className="w-6 h-6 text-red-600 hover:text-red-800"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))
+                ))}
+              </>
             )}
           </div>
 
@@ -310,22 +389,55 @@ export function AttendantDashboard() {
                 </span>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Forma de Pagamento
-                </label>
-                <select
-                  value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value as any)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="cash">💵 Dinheiro</option>
-                  <option value="debit">🏧 Cartão Débito</option>
-                  <option value="credit">💳 Cartão Crédito</option>
-                  <option value="qrcode">📱 QR Code/PIX</option>
-                </select>
-              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Forma de Pagamento
+                  </label>
+                  <select
+                    value={paymentMethod}
+                    onChange={(e) =>
+                      setPaymentMethod(
+                        e.target.value as "cash" | "debit" | "credit" | "qrcode"
+                      )
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="cash">💵 Dinheiro</option>
+                    <option value="debit">🏧 Cartão Débito</option>
+                    <option value="credit">💳 Cartão Crédito</option>
+                    <option value="qrcode">📱 QR Code/PIX</option>
+                  </select>
+                </div>
 
+                {paymentMethod === "cash" && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Valor recebido (R$)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min={0}
+                      value={cashReceived}
+                      onChange={(e) =>
+                        setCashReceived(parseFloat(e.target.value) || 0)
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                    <p className="text-sm text-gray-500 mt-1">
+                      Troco: R$ {(cashReceived - getTotalAmount()).toFixed(2)}
+                    </p>
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={printCart}
+                disabled
+                className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+              >
+                Imprimir Carrinho
+              </button>
               <button
                 onClick={processSale}
                 disabled={processing}
@@ -338,6 +450,36 @@ export function AttendantDashboard() {
           )}
         </div>
       </div>
+      {showClientModal && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+          <div className="bg-white p-6 rounded-lg w-80">
+            <h2 className="text-lg font-semibold mb-4">
+              Digite o nome do cliente
+            </h2>
+            <input
+              type="text"
+              value={clientName}
+              onChange={(e) => setClientName(e.target.value)}
+              className="w-full border border-gray-300 rounded px-3 py-2 mb-4"
+              placeholder="Nome do cliente"
+            />
+            <div className="flex justify-end space-x-2">
+              <button
+                onClick={() => setShowClientModal(false)}
+                className="px-4 py-2 border rounded text-gray-700 hover:bg-gray-100"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmClient}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <ToastContainer />
     </div>
   );
