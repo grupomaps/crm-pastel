@@ -462,7 +462,6 @@ const removeFromCart = (productId: string) => {
               </div>
               <button
                 onClick={printCart}
-                disabled
                 className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
               >
                 Imprimir Carrinho
