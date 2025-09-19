@@ -105,25 +105,35 @@ export function AttendantDashboard() {
   };
 
   const updateCartQuantity = (productId: string, newQuantity: number) => {
-    if (newQuantity === 0) {
-      setCart(cart.filter((item) => item.product.id !== productId));
-    } else {
-      const product = products.find((p) => p.id === productId);
-      if (product && newQuantity <= product.stock_quantity) {
-        setCart(
-          cart.map((item) =>
-            item.product.id === productId
-              ? { ...item, quantity: newQuantity }
-              : item
-          )
-        );
-      }
-    }
-  };
+  if (newQuantity === 0) {
+    const newCart = cart.filter((item) => item.product.id !== productId);
+    setCart(newCart);
 
-  const removeFromCart = (productId: string) => {
-    setCart(cart.filter((item) => item.product.id !== productId));
-  };
+    if (newCart.length === 0) {
+      setClientName("");
+    }
+  } else {
+    const product = products.find((p) => p.id === productId);
+    if (product && newQuantity <= product.stock_quantity) {
+      const newCart = cart.map((item) =>
+        item.product.id === productId
+          ? { ...item, quantity: newQuantity }
+          : item
+      );
+      setCart(newCart);
+    }
+  }
+};
+
+const removeFromCart = (productId: string) => {
+  const newCart = cart.filter((item) => item.product.id !== productId);
+  setCart(newCart);
+
+  if (newCart.length === 0) {
+    setClientName("");
+  }
+};
+
 
   const getTotalAmount = () => {
     return cart.reduce(
@@ -175,8 +185,7 @@ export function AttendantDashboard() {
           .update({ stock_quantity: newStock })
           .eq("id", item.product.id);
       }
-
-      // Limpar carrinho e recarregar produtos
+      setClientName("");
       setCart([]);
       fetchProducts();
       toast.success("Venda registrada com sucesso!");
@@ -195,13 +204,24 @@ export function AttendantDashboard() {
       </div>
     );
   }
-  const printCart = () => {
-    if (cart.length === 0) return alert("Carrinho vazio!");
+ const printCart = () => {
+  if (cart.length === 0) return alert("Carrinho vazio!");
 
-    const cartHtml = `
+  const total = cart.reduce(
+    (sum, item) => sum + item.product.price * item.quantity,
+    0
+  );
+
+  const paymentLabels: Record<string, string> = {
+    cash: "Dinheiro",
+    debit: "Cartão Débito",
+    credit: "Cartão Crédito",
+    qrcode: "QR Code / PIX",
+  };
+
+  const cartHtml = `
     <html>
       <head>
-        <title>Resumo do Carrinho</title>
         <style>
           body { font-family: sans-serif; width: 300px; margin: 20px; }
           hr { border: 1px solid #ccc; }
@@ -228,24 +248,34 @@ export function AttendantDashboard() {
           )
           .join("")}
         <hr />
-        <p class="total">Total: R$ ${cart
-          .reduce((sum, item) => sum + item.product.price * item.quantity, 0)
-          .toFixed(2)}</p>
+        <p class="total">Total: R$ ${total.toFixed(2)}</p>
+        <p><strong>Forma de pagamento:</strong> ${
+          paymentLabels[paymentMethod]
+        }</p>
+        ${
+          paymentMethod === "cash"
+            ? `
+          <p><strong>Valor recebido:</strong> R$ ${cashReceived.toFixed(2)}</p>
+          <p><strong>Troco:</strong> R$ ${(cashReceived - total).toFixed(2)}</p>
+        `
+            : ""
+        }
       </body>
     </html>
   `;
 
-    const printWindow = window.open("", "PRINT", "width=400,height=600");
-    if (!printWindow) return;
+  const printWindow = window.open("", "PRINT", "width=400,height=600");
+  if (!printWindow) return;
 
-    printWindow.document.write(cartHtml);
-    printWindow.document.close();
-    printWindow.focus();
+  printWindow.document.write(cartHtml);
+  printWindow.document.close();
+  printWindow.focus();
 
-    // Dá um pequeno delay antes de fechar para garantir que a impressão termine
-    printWindow.print();
-    setTimeout(() => printWindow.close(), 500);
-  };
+  // Dá um pequeno delay antes de fechar para garantir que a impressão termine
+  printWindow.print();
+  setTimeout(() => printWindow.close(), 500);
+};
+
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-120px)]">
@@ -309,7 +339,6 @@ export function AttendantDashboard() {
         </div>
       </div>
 
-      {/* Carrinho */}
       <div className="space-y-4">
         <div className="bg-white rounded-xl shadow-sm">
           <div className="p-4 border-b border-gray-200">

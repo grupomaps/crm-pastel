@@ -114,17 +114,16 @@ export function DailyReport() {
     message += `📱 QR Code/PIX: R$ ${reportData.paymentMethods.qrcode.toFixed(2)}\n\n`
     
     if (reportData.productsSold.length > 0) {
-      message += `📦 *PRODUTOS MAIS VENDIDOS:*\n`
+      message += `📦 *PRODUTOS VENDIDOS:*\n`
       reportData.productsSold
         .sort((a, b) => b.quantity - a.quantity)
-        .slice(0, 5)
         .forEach(product => {
           message += `• ${product.name}: ${product.quantity}x (R$ ${product.revenue.toFixed(2)})\n`
         })
     }
 
     // Simular envio para WhatsApp (em produção, use a API do WhatsApp Business)
-    const whatsappUrl = `https://api.whatsapp.com/send?phone=5511989459295&text=${encodeURIComponent(message)}`
+    const whatsappUrl = `https://api.whatsapp.com/send?phone=5511932911121&text=${encodeURIComponent(message)}`
     window.open(whatsappUrl, '_blank')
   }
 
