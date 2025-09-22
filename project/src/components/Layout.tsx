@@ -1,13 +1,13 @@
-import React from 'react'
-import { useAuth } from '../contexts/AuthContext'
-import { LogOut, Store, User } from 'lucide-react'
+import React from "react";
+import { useAuth } from "../contexts/AuthContext";
+import { LogOut, Store, User } from "lucide-react";
 
 interface LayoutProps {
-  children: React.ReactNode
+  children: React.ReactNode;
 }
 
 export function Layout({ children }: LayoutProps) {
-  const { profile, logout } = useAuth()
+  const { profile, logout } = useAuth();
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -19,9 +19,11 @@ export function Layout({ children }: LayoutProps) {
                 <Store className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-gray-900">Pastel da Praça</h1>
+                <h1 className="text-xl font-bold text-gray-900">
+                  Pastel da Praça
+                </h1>
                 <p className="text-sm text-gray-500">
-                  {profile?.role === 'admin' ? 'Administrador' : 'Atendente'}
+                  {profile?.role === "admin" ? "Administrador" : "Atendente"}
                 </p>
               </div>
             </div>
@@ -47,5 +49,5 @@ export function Layout({ children }: LayoutProps) {
         {children}
       </main>
     </div>
-  )
+  );
 }

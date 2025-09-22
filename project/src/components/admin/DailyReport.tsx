@@ -1,9 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { FileText, Send } from 'lucide-react'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+import { formatInTimeZone, toZonedTime } from 'date-fns-tz'
 
 interface SalesReport {
   totalSales: number
@@ -25,107 +26,124 @@ export function DailyReport() {
   const [loading, setLoading] = useState(false)
   const [showReport, setShowReport] = useState(false)
   const [reportData, setReportData] = useState<SalesReport | null>(null)
+  const timeZone = "America/Sao_Paulo";
 
   const generateReport = async () => {
-    setLoading(true)
-    try {
-      const today = new Date().toISOString().split('T')[0]
-      
-      // Buscar vendas do dia
-      const { data: salesData } = await supabase
-        .from('sales')
-        .select(`
-          *,
-          sale_items (
-            quantity,
-            unit_price,
-            subtotal,
-            products (name)
-          )
-        `)
-        .gte('created_at', `${today}T00:00:00`)
-        .lt('created_at', `${today}T23:59:59`)
+  setLoading(true);
+  try {
+    const timeZone = "America/Sao_Paulo";
 
-      if (salesData) {
-        const totalSales = salesData.length
-        const totalRevenue = salesData.reduce((sum, sale) => sum + sale.total_amount, 0)
+    // data/hora atual no fuso de SP
+    const nowSP = toZonedTime(new Date(), timeZone);
 
-        // Agrupar por método de pagamento
-        const paymentMethods = {
-          cash: salesData.filter(s => s.payment_method === 'cash').reduce((sum, s) => sum + s.total_amount, 0),
-          debit: salesData.filter(s => s.payment_method === 'debit').reduce((sum, s) => sum + s.total_amount, 0),
-          credit: salesData.filter(s => s.payment_method === 'credit').reduce((sum, s) => sum + s.total_amount, 0),
-          qrcode: salesData.filter(s => s.payment_method === 'qrcode').reduce((sum, s) => sum + s.total_amount, 0),
-        }
+    // define início e fim do dia de hoje em SP
+    const startOfDaySP = new Date(nowSP);
+    startOfDaySP.setHours(0, 0, 0, 0);
 
-        // Agrupar produtos vendidos
-        const productsMap = new Map()
-        salesData.forEach(sale => {
-          sale.sale_items?.forEach((item: { products: { name: string }; quantity: any; subtotal: any }) => {
-            const productName = item.products?.name || 'Produto não encontrado'
-            if (productsMap.has(productName)) {
-              const existing = productsMap.get(productName)
-              productsMap.set(productName, {
-                name: productName,
-                quantity: existing.quantity + item.quantity,
-                revenue: existing.revenue + item.subtotal
-              })
-            } else {
-              productsMap.set(productName, {
-                name: productName,
-                quantity: item.quantity,
-                revenue: item.subtotal
-              })
-            }
-          })
-        })
+    const endOfDaySP = new Date(nowSP);
+    endOfDaySP.setHours(23, 59, 59, 999);
 
-        const productsSold = Array.from(productsMap.values())
+    // Buscar vendas do dia
+    const { data: salesData, error } = await supabase
+      .from('sales')
+      .select(`
+        *,
+        sale_items (
+          quantity,
+          unit_price,
+          subtotal,
+          products (name)
+        )
+      `)
+      .gte('created_at', startOfDaySP.toISOString())
+      .lte('created_at', endOfDaySP.toISOString());
 
-        setReportData({
-          totalSales,
-          totalRevenue,
-          paymentMethods,
-          productsSold
-        })
-        setShowReport(true)
-      }
-    } catch (error) {
-      console.error('Erro ao gerar relatório:', error)
-      alert('Erro ao gerar relatório')
-    } finally {
-      setLoading(false)
+    if (error) throw error;
+    if (!salesData || salesData.length === 0) {
+      setReportData(null);
+      setShowReport(true);
+      return;
     }
+
+    const totalSales = salesData.length;
+    const totalRevenue = salesData.reduce((sum, sale) => sum + sale.total_amount, 0);
+
+    const paymentMethods = {
+      cash: salesData.filter(s => s.payment_method === 'cash').reduce((sum, s) => sum + s.total_amount, 0),
+      debit: salesData.filter(s => s.payment_method === 'debit').reduce((sum, s) => sum + s.total_amount, 0),
+      credit: salesData.filter(s => s.payment_method === 'credit').reduce((sum, s) => sum + s.total_amount, 0),
+      qrcode: salesData.filter(s => s.payment_method === 'qrcode').reduce((sum, s) => sum + s.total_amount, 0),
+    };
+
+    const productsMap = new Map();
+    salesData.forEach(sale => {
+      sale.sale_items?.forEach((item: { products: { name: string }; quantity: any; subtotal: any }) => {
+        const productName = item.products?.name || 'Produto não encontrado';
+        if (productsMap.has(productName)) {
+          const existing = productsMap.get(productName);
+          productsMap.set(productName, {
+            name: productName,
+            quantity: existing.quantity + item.quantity,
+            revenue: existing.revenue + item.subtotal,
+          });
+        } else {
+          productsMap.set(productName, {
+            name: productName,
+            quantity: item.quantity,
+            revenue: item.subtotal,
+          });
+        }
+      });
+    });
+
+    const productsSold = Array.from(productsMap.values());
+
+    setReportData({
+      totalSales,
+      totalRevenue,
+      paymentMethods,
+      productsSold,
+    });
+    setShowReport(true);
+  } catch (error) {
+    console.error('Erro ao gerar relatório:', error);
+    alert('Erro ao gerar relatório');
+  } finally {
+    setLoading(false);
   }
+};
 
   const sendWhatsAppReport = async () => {
-    if (!reportData) return
+  if (!reportData) return;
 
-    const today = format(new Date(), "dd/MM/yyyy", { locale: ptBR })
-    
-    let message = `📊 *RELATÓRIO DIÁRIO - ${today}*\n\n`
-    message += `🛒 *Total de Vendas:* ${reportData.totalSales}\n`
-    message += `💰 *Faturamento Total:* R$ ${reportData.totalRevenue.toFixed(2)}\n\n`
-    
-    message += `💳 *FORMAS DE PAGAMENTO:*\n`
-    message += `💵 Dinheiro: R$ ${reportData.paymentMethods.cash.toFixed(2)}\n`
-    message += `🏧 Cartão Débito: R$ ${reportData.paymentMethods.debit.toFixed(2)}\n`
-    message += `💳 Cartão Crédito: R$ ${reportData.paymentMethods.credit.toFixed(2)}\n`
-    message += `📱 QR Code/PIX: R$ ${reportData.paymentMethods.qrcode.toFixed(2)}\n\n`
-    
-    if (reportData.productsSold.length > 0) {
-      message += `📦 *PRODUTOS VENDIDOS:*\n`
-      reportData.productsSold
-        .sort((a, b) => b.quantity - a.quantity)
-        .forEach(product => {
-          message += `• ${product.name}: ${product.quantity}x (R$ ${product.revenue.toFixed(2)})\n`
-        })
-    }
+  const today = formatInTimeZone(new Date(), timeZone, "dd/MM/yyyy HH:mm", {
+    locale: ptBR,
+  });
 
-    // Simular envio para WhatsApp (em produção, use a API do WhatsApp Business)
-    const whatsappUrl = `https://api.whatsapp.com/send?phone=5511932911121&text=${encodeURIComponent(message)}`
-    window.open(whatsappUrl, '_blank')
+  let message = `📊 *RELATÓRIO DIÁRIO - ${today}*\n\n`;
+  message += `🛒 *Total de Vendas:* ${reportData.totalSales}\n`;
+  message += `💰 *Faturamento Total:* R$ ${reportData.totalRevenue.toFixed(2)}\n\n`;
+
+  message += `💳 *FORMAS DE PAGAMENTO:*\n`;
+  message += `💵 Dinheiro: R$ ${reportData.paymentMethods.cash.toFixed(2)}\n`;
+  message += `🏧 Cartão Débito: R$ ${reportData.paymentMethods.debit.toFixed(2)}\n`;
+  message += `💳 Cartão Crédito: R$ ${reportData.paymentMethods.credit.toFixed(2)}\n`;
+  message += `📱 QR Code/PIX: R$ ${reportData.paymentMethods.qrcode.toFixed(2)}\n\n`;
+
+  if (reportData.productsSold.length > 0) {
+    message += `📦 *PRODUTOS VENDIDOS:*\n`;
+    reportData.productsSold
+      .sort((a, b) => b.quantity - a.quantity)
+      .forEach((product) => {
+        message += `• ${product.name}: ${product.quantity}x (R$ ${product.revenue.toFixed(2)})\n`;
+      });
   }
+
+  const whatsappUrl = `https://api.whatsapp.com/send?phone=5511932911121&text=${encodeURIComponent(
+    message
+  )}`;
+  window.open(whatsappUrl, "_blank");
+};
 
   return (
     <>

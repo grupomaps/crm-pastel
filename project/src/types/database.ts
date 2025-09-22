@@ -27,6 +27,8 @@ export interface SaleItem {
   unit_price: number
   subtotal: number
   created_at: string
+  client_name: string
+  product_name: string
 }
 
 export interface User {

@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import { DailyReport } from "../admin/DailyReport";
 import { toast, ToastContainer } from "react-toastify";
+import { fromZonedTime, toZonedTime } from "date-fns-tz";
+import SalesDaily from "./SalesDaily";
 
 interface Product {
   id: string;
@@ -22,6 +24,18 @@ interface Product {
   image_base64: string | null;
 }
 
+interface SalesDaily {
+  id: string;
+  sale_id: string;
+  product_id: string;
+  quantity: number;
+  unit_price: number;
+  subtotal: number;
+  created_at: string;
+  client_name: string;
+  product_name: string;
+}
+
 interface CartItem {
   product: Product;
   quantity: number;
@@ -30,6 +44,7 @@ interface CartItem {
 export function AttendantDashboard() {
   const { user } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
+  const [salesDaily, setSalesDaily] = useState<SalesDaily[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<
@@ -44,6 +59,7 @@ export function AttendantDashboard() {
 
   useEffect(() => {
     fetchProducts();
+    fetchSalesDaily();
   }, []);
 
   const fetchProducts = async () => {
@@ -63,6 +79,64 @@ export function AttendantDashboard() {
       setLoading(false);
     }
   };
+
+  const fetchSalesDaily = async () => {
+  try {
+    const timeZone = "America/Sao_Paulo";
+    const nowSP = toZonedTime(new Date(), timeZone);
+
+    const startOfDaySP = new Date(nowSP);
+    startOfDaySP.setHours(0, 0, 0, 0);
+    const endOfDaySP = new Date(nowSP);
+    endOfDaySP.setHours(23, 59, 59, 999);
+
+    const { data, error } = await supabase
+      .from("sale_items")
+      .select(`
+        id,
+        product_id,
+        quantity,
+        products!inner (
+          name
+        ),
+        sale_id (
+          id,
+          client_name,
+          created_at
+        )
+      `);
+
+    if (error) throw error;
+
+    if (data) {
+      const dailySales: SalesDaily[] = data
+        .filter((item: any) => {
+          const saleCreated = item.sale_id?.created_at;
+          if (!saleCreated) return false;
+
+          const saleDateSP = toZonedTime(new Date(saleCreated), timeZone);
+          return saleDateSP >= startOfDaySP && saleDateSP <= endOfDaySP;
+        })
+        .map((item: any) => ({
+          id: item.id ?? "",
+          sale_id: item.sale_id?.id ?? "",
+          product_id: item.product_id,
+          product_name: item.products?.name ?? "Produto não encontrado",
+          quantity: item.quantity ?? 0,
+          unit_price: 0,
+          subtotal: 0,
+          created_at: item.sale_id?.created_at ?? "",
+          client_name: item.sale_id?.client_name || "Cliente não informado",
+        }));
+
+      setSalesDaily(dailySales);
+    }
+  } catch (error) {
+    console.error("Erro ao carregar vendas do dia:", error);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const filteredProducts = products.filter(
     (product) =>
@@ -105,35 +179,34 @@ export function AttendantDashboard() {
   };
 
   const updateCartQuantity = (productId: string, newQuantity: number) => {
-  if (newQuantity === 0) {
+    if (newQuantity === 0) {
+      const newCart = cart.filter((item) => item.product.id !== productId);
+      setCart(newCart);
+
+      if (newCart.length === 0) {
+        setClientName("");
+      }
+    } else {
+      const product = products.find((p) => p.id === productId);
+      if (product && newQuantity <= product.stock_quantity) {
+        const newCart = cart.map((item) =>
+          item.product.id === productId
+            ? { ...item, quantity: newQuantity }
+            : item
+        );
+        setCart(newCart);
+      }
+    }
+  };
+
+  const removeFromCart = (productId: string) => {
     const newCart = cart.filter((item) => item.product.id !== productId);
     setCart(newCart);
 
     if (newCart.length === 0) {
       setClientName("");
     }
-  } else {
-    const product = products.find((p) => p.id === productId);
-    if (product && newQuantity <= product.stock_quantity) {
-      const newCart = cart.map((item) =>
-        item.product.id === productId
-          ? { ...item, quantity: newQuantity }
-          : item
-      );
-      setCart(newCart);
-    }
-  }
-};
-
-const removeFromCart = (productId: string) => {
-  const newCart = cart.filter((item) => item.product.id !== productId);
-  setCart(newCart);
-
-  if (newCart.length === 0) {
-    setClientName("");
-  }
-};
-
+  };
 
   const getTotalAmount = () => {
     return cart.reduce(
@@ -147,7 +220,9 @@ const removeFromCart = (productId: string) => {
 
     setProcessing(true);
     try {
-      // Criar venda
+      const timeZone = "America/Sao_Paulo";
+      const createdAt = fromZonedTime(new Date(), timeZone);
+
       const { data: saleData, error: saleError } = await supabase
         .from("sales")
         .insert([
@@ -155,6 +230,8 @@ const removeFromCart = (productId: string) => {
             total_amount: getTotalAmount(),
             payment_method: paymentMethod,
             user_id: user?.id,
+            client_name: clientName,
+            created_at: createdAt,
           },
         ])
         .select()
@@ -185,6 +262,7 @@ const removeFromCart = (productId: string) => {
           .update({ stock_quantity: newStock })
           .eq("id", item.product.id);
       }
+
       setClientName("");
       setCart([]);
       fetchProducts();
@@ -204,78 +282,69 @@ const removeFromCart = (productId: string) => {
       </div>
     );
   }
- const printCart = () => {
-  if (cart.length === 0) return alert("Carrinho vazio!");
+  const printCart = () => {
+    if (cart.length === 0) return alert("Carrinho vazio!");
 
-  const total = cart.reduce(
-    (sum, item) => sum + item.product.price * item.quantity,
-    0
-  );
+    const total = cart.reduce(
+      (sum, item) => sum + item.product.price * item.quantity,
+      0
+    );
 
-  const paymentLabels: Record<string, string> = {
-    cash: "Dinheiro",
-    debit: "Cartão Débito",
-    credit: "Cartão Crédito",
-    qrcode: "QR Code / PIX",
+    const paymentLabels: Record<string, string> = {
+      cash: "Dinheiro",
+      debit: "Cartão Débito",
+      credit: "Cartão Crédito",
+      qrcode: "QR Code / PIX",
+    };
+
+    const cartHtml = `
+<html>
+  <head>
+    <style>
+      body { font-family: monospace; width: 58mm; margin: 0; padding: 5px; }
+      hr { border: 1px dashed #000; }
+      .item { margin-bottom: 6px; }
+      .total { font-weight: bold; margin-top: 10px; }
+      p { margin: 2px 0; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    ${clientName ? `<p>Cliente: ${clientName}</p>` : ""}
+    <hr />
+    ${cart
+      .map(
+        (item) => `
+      <div class="item">
+        <p>${item.product.name}</p>
+        <p>Preço: R$ ${item.product.price.toFixed(2)}</p>
+        <p>Qtd: ${item.quantity} | Subtotal: R$ ${(item.product.price * item.quantity).toFixed(2)}</p>
+      </div>
+    `
+      )
+      .join("")}
+    <hr />
+    <p class="total">Total: R$ ${total.toFixed(2)}</p>
+    <p>Pagamento: ${paymentLabels[paymentMethod]}</p>
+    ${
+      paymentMethod === "cash"
+        ? `<p>Recebido: R$ ${cashReceived.toFixed(2)}</p><p>Troco: R$ ${(cashReceived - total).toFixed(2)}</p>`
+        : ""
+    }
+  </body>
+</html>
+`;
+
+    const printWindow = window.open("", "PRINT", "width=400,height=600");
+    if (!printWindow) return;
+
+    printWindow.document.write(cartHtml);
+    printWindow.document.close();
+    printWindow.focus();
+
+    // Dá um pequeno delay antes de fechar para garantir que a impressão termine
+    printWindow.print();
+    setTimeout(() => printWindow.close(), 500);
   };
-
-  const cartHtml = `
-    <html>
-      <head>
-        <style>
-          body { font-family: sans-serif; width: 300px; margin: 20px; }
-          hr { border: 1px solid #ccc; }
-          .item { margin-bottom: 12px; }
-          .item p { margin: 2px 0; }
-          .total { font-weight: bold; margin-top: 10px; }
-        </style>
-      </head>
-      <body>
-        ${clientName ? `<p><strong>Cliente:</strong> ${clientName}</p>` : ""}
-        <hr />
-        ${cart
-          .map(
-            (item) => `
-            <div class="item">
-              <p><strong>${item.product.name}</strong></p>
-              <p>Preço unitário: R$ ${item.product.price.toFixed(2)}</p>
-              <p>Quantidade: ${item.quantity}</p>
-              <p>Subtotal: R$ ${(item.product.price * item.quantity).toFixed(
-                2
-              )}</p>
-            </div>
-          `
-          )
-          .join("")}
-        <hr />
-        <p class="total">Total: R$ ${total.toFixed(2)}</p>
-        <p><strong>Forma de pagamento:</strong> ${
-          paymentLabels[paymentMethod]
-        }</p>
-        ${
-          paymentMethod === "cash"
-            ? `
-          <p><strong>Valor recebido:</strong> R$ ${cashReceived.toFixed(2)}</p>
-          <p><strong>Troco:</strong> R$ ${(cashReceived - total).toFixed(2)}</p>
-        `
-            : ""
-        }
-      </body>
-    </html>
-  `;
-
-  const printWindow = window.open("", "PRINT", "width=400,height=600");
-  if (!printWindow) return;
-
-  printWindow.document.write(cartHtml);
-  printWindow.document.close();
-  printWindow.focus();
-
-  // Dá um pequeno delay antes de fechar para garantir que a impressão termine
-  printWindow.print();
-  setTimeout(() => printWindow.close(), 500);
-};
-
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-120px)]">
@@ -477,6 +546,7 @@ const removeFromCart = (productId: string) => {
             </div>
           )}
         </div>
+        <SalesDaily sales={salesDaily} />
       </div>
       {showClientModal && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
